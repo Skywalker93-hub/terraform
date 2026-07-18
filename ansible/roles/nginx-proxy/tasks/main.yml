@@ -1,0 +1,19 @@
+---
+- name: Deploy nginx config
+  ansible.builtin.template:
+    src: proxy.conf.j2
+    dest: /etc/nginx/sites-available/proxy.conf
+    mode: "0644"
+
+- name: Enable proxy nginx config
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/proxy.conf
+    dest: /etc/nginx/sites-enabled/proxy.conf
+    state: link
+    force: true
+
+- name: Restart nginx
+  ansible.builtin.service:
+    name: nginx
+    state: restarted
+    enabled: true

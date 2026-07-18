@@ -1,0 +1,14 @@
+- hosts: all
+  become: true
+  roles:
+    - base
+
+- hosts: proxy
+  become: true
+  roles:
+    - nginx-proxy
+
+- hosts: web
+  become: true
+  roles:
+    - nginx-web

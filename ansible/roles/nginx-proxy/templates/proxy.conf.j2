@@ -1,0 +1,13 @@
+upstream backend {
+    server {{ hostvars['web1'].ansible_host }};
+    server {{ hostvars['web2'].ansible_host }};
+}
+
+server {
+    listen 3000;
+
+    location / {
+        add_header X-Upstream $upstream_addr always;
+        proxy_pass http://backend;
+    }
+}

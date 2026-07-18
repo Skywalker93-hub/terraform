@@ -1,0 +1,19 @@
+---
+- name: Create html directory
+  ansible.builtin.file:
+    path: /var/www/html
+    state: directory
+    mode: "0755"
+
+- name: Create index page
+  ansible.builtin.copy:
+    dest: /var/www/html/index.html
+    content: |
+      Hello from {{ inventory_hostname }}!
+    mode: "0644"
+
+- name: Start nginx
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true

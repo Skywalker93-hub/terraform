@@ -5,6 +5,10 @@ terraform {
       source  = "yandex-cloud/yandex"
       version = "0.215.0"
     }
+
+    local = {
+      source = "hashicorp/local"
+    }
   }
 
   backend "s3" {
@@ -27,7 +31,7 @@ terraform {
 
 provider "yandex" {
   zone                     = "ru-central1-a"
-  service_account_key_file = pathexpand("~/.config/yandex-cloud/terraform-sa-key.json")
+  service_account_key_file = pathexpand("~/.config/yandex-cloud/terraform-aiz-sa-key.json")
 }
 
 // VPC Network
@@ -86,6 +90,12 @@ resource "yandex_vpc_default_security_group" "sg" {
     to_port        = 65535
   }
 
+  ingress {
+    protocol       = "TCP"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+    port           = 3000
+  }
+
 }
 
 // Get image ID for Ubuntu 26.04 LTS 
@@ -98,7 +108,7 @@ resource "yandex_compute_disk" "boot" {
   name = "ubuntu-2604-boot"
   zone = "ru-central1-a"
   type = "network-ssd"
-  size = 30
+  size = 12
 
   image_id = data.yandex_compute_image.ubuntu_2604.id
 }
@@ -108,7 +118,7 @@ resource "yandex_compute_disk" "boot2" {
   name = "ubuntu-2604-boot2"
   zone = "ru-central1-b"
   type = "network-ssd"
-  size = 30
+  size = 12
 
   image_id = data.yandex_compute_image.ubuntu_2604.id
 }
@@ -118,14 +128,14 @@ resource "yandex_compute_disk" "boot3" {
   name = "ubuntu-2604-boot3"
   zone = "ru-central1-d"
   type = "network-ssd"
-  size = 30
+  size = 12
 
   image_id = data.yandex_compute_image.ubuntu_2604.id
 }
 
-// New instance "web"
-resource "yandex_compute_instance" "web" {
-  name        = "web"
+// New instance "proxy"
+resource "yandex_compute_instance" "proxy" {
+  name        = "proxy"
   platform_id = "standard-v3"
   zone        = "ru-central1-a"
 
@@ -136,7 +146,7 @@ resource "yandex_compute_instance" "web" {
 
   boot_disk {
     disk_id     = yandex_compute_disk.boot.id
-    auto_delete = false
+    auto_delete = true
   }
 
   network_interface {
@@ -153,9 +163,9 @@ resource "yandex_compute_instance" "web" {
   }
 }
 
-// New instance "app"
-resource "yandex_compute_instance" "app" {
-  name        = "app"
+// New instance "web1"
+resource "yandex_compute_instance" "web1" {
+  name        = "web1"
   platform_id = "standard-v3"
   zone        = "ru-central1-b"
 
@@ -166,7 +176,7 @@ resource "yandex_compute_instance" "app" {
 
   boot_disk {
     disk_id     = yandex_compute_disk.boot2.id
-    auto_delete = false
+    auto_delete = true
   }
 
   network_interface {
@@ -183,9 +193,9 @@ resource "yandex_compute_instance" "app" {
   }
 }
 
-// New instance "monitoring"
-resource "yandex_compute_instance" "monitoring" {
-  name        = "monitoring"
+// New instance "web2"
+resource "yandex_compute_instance" "web2" {
+  name        = "web2"
   platform_id = "standard-v3"
   zone        = "ru-central1-d"
 
@@ -196,7 +206,7 @@ resource "yandex_compute_instance" "monitoring" {
 
   boot_disk {
     disk_id     = yandex_compute_disk.boot3.id
-    auto_delete = false
+    auto_delete = true
   }
 
   network_interface {
@@ -214,30 +224,41 @@ resource "yandex_compute_instance" "monitoring" {
 }
 
 // Save output data
-output "web_external_ip" {
-  value = yandex_compute_instance.web.network_interface[0].nat_ip_address
+output "proxy_external_ip" {
+  value = yandex_compute_instance.proxy.network_interface[0].nat_ip_address
 }
 
-output "app_external_ip" {
-  value = yandex_compute_instance.app.network_interface[0].nat_ip_address
+output "web1_external_ip" {
+  value = yandex_compute_instance.web1.network_interface[0].nat_ip_address
 }
 
-output "monitoring_external_ip" {
-  value = yandex_compute_instance.monitoring.network_interface[0].nat_ip_address
+output "web2_external_ip" {
+  value = yandex_compute_instance.web2.network_interface[0].nat_ip_address
 }
 
-// Create inventory.ini 
+// Create inventory.ini because of dynamic IPs
 resource "local_file" "inventory" {
-  filename = "${path.module}/ansible/inventory.ini"
+  filename = "${path.module}/ansible/inventory/inventory.yml"
 
   content = <<EOF
-[web]
-${yandex_compute_instance.web.network_interface[0].nat_ip_address}
+all:
+  children:
+    proxy:
+      hosts:
+        proxy:
+          ansible_host: ${yandex_compute_instance.proxy.network_interface[0].nat_ip_address}
 
-[app]
-${yandex_compute_instance.app.network_interface[0].nat_ip_address}
+    web:
+      hosts:
+        web1:
+          ansible_host: ${yandex_compute_instance.web1.network_interface[0].nat_ip_address}
 
-[monitoring]
-${yandex_compute_instance.monitoring.network_interface[0].nat_ip_address}
+        web2:
+          ansible_host: ${yandex_compute_instance.web2.network_interface[0].nat_ip_address}
+
+  vars:
+    ansible_user: ubuntu
+    ansible_port: 22
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
 EOF
 }
